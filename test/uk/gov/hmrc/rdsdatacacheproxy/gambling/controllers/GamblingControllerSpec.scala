@@ -43,6 +43,7 @@ import play.api.test.Helpers.*
 import uk.gov.hmrc.rdsdatacacheproxy.base.SpecBase
 import uk.gov.hmrc.rdsdatacacheproxy.gambling.models.GamblingError.{InvalidMgdRegNumber, UnexpectedError}
 import uk.gov.hmrc.rdsdatacacheproxy.gambling.models.{BusinessDetails, ReturnSummary}
+import uk.gov.hmrc.rdsdatacacheproxy.gambling.models.BusinessName
 import uk.gov.hmrc.rdsdatacacheproxy.gambling.services.GamblingService
 
 import java.time.LocalDate
@@ -87,14 +88,80 @@ class GamblingControllerSpec extends SpecBase with MockitoSugar {
 
       verify(mockService).getReturnSummary(eqTo("XWM00000001770"))(any())
     }
+    "returns 400 when InvalidMgdRegNumber" in new Setup {
+      when(mockService.getReturnSummary(any())(any()))
+        .thenReturn(Future.successful(Left(InvalidMgdRegNumber)))
+
+      val req = FakeRequest(GET, "/gambling/return-summary/jhrfdshgksdhg")
+      val res = controller.getReturnSummary(" ")(req)
+
+      status(res) mustBe BAD_REQUEST
+      contentAsJson(res) mustBe Json.obj(
+        "code"    -> "INVALID_MGD_REG_NUMBER",
+        "message" -> "mgdRegNumber does not exist"
+      )
+
+      verify(mockService).getReturnSummary(eqTo(" "))(any())
+    }
+
+    "returns 500 when UnexpectedError" in new Setup {
+      when(mockService.getReturnSummary(any())(any()))
+        .thenReturn(Future.successful(Left(UnexpectedError)))
+
+      val req = FakeRequest(GET, "/gambling/return-summary/ERR00001770")
+      val res = controller.getReturnSummary("ERR00001770")(req)
+
+      status(res) mustBe INTERNAL_SERVER_ERROR
+      contentAsJson(res) mustBe Json.obj(
+        "code"    -> "UNEXPECTED_ERROR",
+        "message" -> "Unexpected error occurred"
+      )
+
+      verify(mockService).getReturnSummary(eqTo("ERR00001770"))(any())
+    }
   }
 
+  "GamblingController#getBusinessName" - {
+
+    "returns 200 when service succeeds" in new Setup {
+      val dateTime: Some[LocalDate] = Some(LocalDate.of(2026, 4, 20))
+      val name = BusinessName("XWM00000001770", "fooBar", "fooBar", "fooBar", "fooBar", "fooBar", "fooBar", "fooBar", dateTime)
+
+      when(mockService.getBusinessName(eqTo("XWM00000001770"))(any()))
+        .thenReturn(Future.successful(Right(name)))
+
+      val req = FakeRequest(GET, "/gambling/business-name/XWM00000001770")
+      val res = controller.getBusinessName("XWM00000001770")(req)
+
+      status(res) mustBe OK
+      contentType(res) mustBe Some(JSON)
+      contentAsJson(res) mustBe Json.toJson(name)
+
+      verify(mockService).getBusinessName(eqTo("XWM00000001770"))(any())
+      verifyNoMoreInteractions(mockService)
+    }
+
+    "allows request through AuthAction" in new Setup {
+      val dateTime: Some[LocalDate] = Some(LocalDate.of(2026, 4, 20))
+      val name = BusinessName("XWM00000001770", "fooBar", "fooBar", "fooBar", "fooBar", "fooBar", "fooBar", "fooBar", dateTime)
+
+      when(mockService.getBusinessName(any())(any()))
+        .thenReturn(Future.successful(Right(name)))
+
+      val req = FakeRequest(GET, "/gambling/business-name/XWM00000001770")
+      val res = controller.getBusinessName("XWM00000001770")(req)
+
+      status(res) mustBe OK
+
+      verify(mockService).getBusinessName(eqTo("XWM00000001770"))(any())
+    }
+  }
   "returns 400 when InvalidMgdRegNumber" in new Setup {
-    when(mockService.getReturnSummary(any())(any()))
+    when(mockService.getBusinessName(any())(any()))
       .thenReturn(Future.successful(Left(InvalidMgdRegNumber)))
 
-    val req = FakeRequest(GET, "/gambling/return-summary/jhrfdshgksdhg")
-    val res = controller.getReturnSummary(" ")(req)
+    val req = FakeRequest(GET, "/gambling/business-name/jhrfdshgksdhg")
+    val res = controller.getBusinessName(" ")(req)
 
     status(res) mustBe BAD_REQUEST
     contentAsJson(res) mustBe Json.obj(
@@ -102,15 +169,15 @@ class GamblingControllerSpec extends SpecBase with MockitoSugar {
       "message" -> "mgdRegNumber does not exist"
     )
 
-    verify(mockService).getReturnSummary(eqTo(" "))(any())
+    verify(mockService).getBusinessName(eqTo(" "))(any())
   }
 
   "returns 500 when UnexpectedError" in new Setup {
-    when(mockService.getReturnSummary(any())(any()))
+    when(mockService.getBusinessName(any())(any()))
       .thenReturn(Future.successful(Left(UnexpectedError)))
 
-    val req = FakeRequest(GET, "/gambling/return-summary/ERR00001770")
-    val res = controller.getReturnSummary("ERR00001770")(req)
+    val req = FakeRequest(GET, "/gambling/business-name/ERR00001770")
+    val res = controller.getBusinessName("ERR00001770")(req)
 
     status(res) mustBe INTERNAL_SERVER_ERROR
     contentAsJson(res) mustBe Json.obj(
@@ -118,7 +185,7 @@ class GamblingControllerSpec extends SpecBase with MockitoSugar {
       "message" -> "Unexpected error occurred"
     )
 
-    verify(mockService).getReturnSummary(eqTo("ERR00001770"))(any())
+    verify(mockService).getBusinessName(eqTo("ERR00001770"))(any())
   }
 
   "GamblingController#getBusinessDetails" - {

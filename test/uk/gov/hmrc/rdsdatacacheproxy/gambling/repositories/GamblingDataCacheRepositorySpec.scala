@@ -23,7 +23,7 @@ import org.scalatest.concurrent.ScalaFutures.convertScalaFuture
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import play.api.db.Database
-import uk.gov.hmrc.rdsdatacacheproxy.gambling.models.{BusinessDetails, ReturnSummary}
+import uk.gov.hmrc.rdsdatacacheproxy.gambling.models.*
 
 import java.sql.{CallableStatement, Connection, ResultSet}
 import java.time.LocalDate
@@ -94,6 +94,50 @@ class GamblingDataCacheRepositorySpec extends AnyFlatSpec with Matchers with Bef
     verifyCleanup()
   }
 
+  "getBusinessName" should "return Business Name when stored procedure returns data" in {
+
+    val mgdRegNumber = "XWM12345678901"
+
+    when(mockResultSet.next()).thenReturn(true)
+    when(mockResultSet.getString("MGD_REG_NUMBER")).thenReturn(mgdRegNumber)
+    when(mockResultSet.getString("SOLE_PROP_TITLE")).thenReturn("Mr")
+    when(mockResultSet.getString("SOLE_PROP_FIRST_NAME")).thenReturn("Foo")
+    when(mockResultSet.getString("SOLE_PROP_MIDDLE_NAME")).thenReturn("B")
+    when(mockResultSet.getString("SOLE_PROP_LAST_NAME")).thenReturn("Bar")
+    when(mockResultSet.getString("BUSINESS_NAME")).thenReturn("Foo Bar Co.")
+    when(mockResultSet.getString("BUSINESS_TYPE")).thenReturn("Sole Proprietor")
+    when(mockResultSet.getString("TRADING_NAME")).thenReturn("Foobar")
+    when(mockResultSet.getDate("SYSTEM_DATE")).thenReturn(java.sql.Date.valueOf("2024-04-21"))
+
+    val result = repository.getBusinessName(mgdRegNumber).futureValue
+
+    result shouldBe BusinessName(
+      mgdRegNumber      = mgdRegNumber,
+      solePropTitle     = "Mr",
+      solePropFirstName = "Foo",
+      solePropMidName   = "B",
+      solePropLastName  = "Bar",
+      businessName      = "Foo Bar Co.",
+      businessType      = "Sole Proprietor",
+      tradingName       = "Foobar",
+      systemDate        = Some(LocalDate.of(2024, 4, 21))
+    )
+    verifyDbSetup(mgdRegNumber)
+
+    verify(mockResultSet).next()
+    verify(mockResultSet).getString("MGD_REG_NUMBER")
+    verify(mockResultSet).getString("SOLE_PROP_TITLE")
+    verify(mockResultSet).getString("SOLE_PROP_FIRST_NAME")
+    verify(mockResultSet).getString("SOLE_PROP_MIDDLE_NAME")
+    verify(mockResultSet).getString("SOLE_PROP_LAST_NAME")
+    verify(mockResultSet).getString("BUSINESS_NAME")
+    verify(mockResultSet).getString("BUSINESS_TYPE")
+    verify(mockResultSet).getString("TRADING_NAME")
+    verify(mockResultSet).getDate("SYSTEM_DATE")
+
+    verifyCleanup()
+  }
+
   it should "handle null values in result set safely" in {
     when(mockResultSet.next()).thenReturn(true)
     when(mockResultSet.getString("MGD_REG_NUMBER")).thenReturn(null)
@@ -130,7 +174,7 @@ class GamblingDataCacheRepositorySpec extends AnyFlatSpec with Matchers with Bef
     )
   }
 
-  it should "throw exception when result set is empty" in {
+  it should "throw exception when result set is empty (returnSummary)" in {
 
     val mgdRegNumber = "XWM12345678901"
 
@@ -138,6 +182,22 @@ class GamblingDataCacheRepositorySpec extends AnyFlatSpec with Matchers with Bef
 
     val exception = intercept[RuntimeException] {
       repository.getReturnSummary(mgdRegNumber).futureValue
+    }
+
+    exception.getMessage should include("Empty result set")
+
+    verifyDbSetup(mgdRegNumber)
+    verifyCleanup()
+  }
+
+  it should "throw exception when result set is empty (businessName)" in {
+
+    val mgdRegNumber = "XWM12345678901"
+
+    when(mockResultSet.next()).thenReturn(false)
+
+    val exception = intercept[RuntimeException] {
+      repository.getBusinessName(mgdRegNumber).futureValue
     }
 
     exception.getMessage should include("Empty result set")
@@ -191,7 +251,7 @@ class GamblingDataCacheRepositorySpec extends AnyFlatSpec with Matchers with Bef
     verify(mockCallableStatement).close()
   }
 
-  it should "throw exception when cursor is null" in {
+  it should "throw exception when cursor is null (returnSummary)" in {
 
     val mgdRegNumber = "ABC12345678901"
 
@@ -199,6 +259,26 @@ class GamblingDataCacheRepositorySpec extends AnyFlatSpec with Matchers with Bef
 
     val exception = intercept[RuntimeException] {
       repository.getReturnSummary(mgdRegNumber).futureValue
+    }
+
+    exception.getMessage should include("Null cursor")
+
+    verify(mockCallableStatement).setString(1, mgdRegNumber)
+    verify(mockCallableStatement).registerOutParameter(2, oracle.jdbc.OracleTypes.CURSOR)
+    verify(mockCallableStatement).execute()
+    verify(mockCallableStatement).getObject(2)
+
+    verify(mockCallableStatement).close()
+  }
+
+  it should "throw exception when cursor is null (businessName)" in {
+
+    val mgdRegNumber = "ABC12345678901"
+
+    when(mockCallableStatement.getObject(2)).thenReturn(null)
+
+    val exception = intercept[RuntimeException] {
+      repository.getBusinessName(mgdRegNumber).futureValue
     }
 
     exception.getMessage should include("Null cursor")
